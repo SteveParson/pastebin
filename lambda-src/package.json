@@ -1,0 +1,15 @@
+{
+    "name": "snippets-lambda",
+    "version": "1.0.0",
+    "description": "AWS Lambda functions to get and post code snippets",
+    "main": "snippets.js",
+    "scripts": {
+      "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "dependencies": {
+      "aws-sdk": "^2.1035.0",
+      "human-readable-ids": "^1.0.4"
+    },
+    "author": "Your Name"
+  }
+  
