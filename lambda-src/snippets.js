@@ -1,6 +1,12 @@
 const AWS = require('aws-sdk');
 const hruId = require('human-readable-ids').hri;
-const dynamo = new AWS.DynamoDB.DocumentClient();
+
+const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE ?? 'snippets';
+
+const dynamo = new AWS.DynamoDB.DocumentClient({
+  region: process.env.AWS_DEFAULT_REGION,
+  endpoint: process.env.AWS_ENDPOINT_URL,
+});
 
 const RESPONSE_MESSAGES = {
   BAD_REQUEST: 'Must specify snippet',
@@ -23,16 +29,10 @@ const createResponse = (statusCode, body) => ({
   },
 });
 
-exports.getSnippet = async (event) => {
-  const { snippet } = event.queryStringParameters || {};
-
-  if (!snippet) {
-    return createResponse(400, { message: RESPONSE_MESSAGES.BAD_REQUEST });
-  }
-
+exports.getSnippetByKey = async (snippet) => {
   const snippetEntry = {
-    TableName: process.env.DYNAMODB_TABLE,
-    Key: { snippet: snippet },
+    TableName: DYNAMODB_TABLE,
+    Key: { snippet },
   };
 
   try {
@@ -43,8 +43,36 @@ exports.getSnippet = async (event) => {
       return createResponse(404, { message: RESPONSE_MESSAGES.NOT_FOUND });
     }
   } catch (error) {
+    console.error({ error });
     return createResponse(500, {
       message: RESPONSE_MESSAGES.DYNAMODB_LOAD_FAILURE,
+    });
+  }
+};
+
+exports.getSnippet = async (event) => {
+  const { snippet } = event.queryStringParameters || {};
+
+  if (!snippet) {
+    return createResponse(400, { message: RESPONSE_MESSAGES.BAD_REQUEST });
+  }
+
+  return exports.getSnippetByKey(snippet);
+};
+
+exports.postSnippetContent = async (content) => {
+  const snippetEntry = {
+    TableName: DYNAMODB_TABLE,
+    Item: { snippet: hruId.random(), content },
+  };
+
+  try {
+    await dynamo.put(snippetEntry).promise();
+    return snippetEntry.Item.snippet;
+  } catch (error) {
+    console.error({ error });
+    return createResponse(500, {
+      message: RESPONSE_MESSAGES.DYNAMODB_SAVE_FAILURE,
     });
   }
 };
@@ -66,10 +94,7 @@ exports.postSnippet = async (event) => {
     });
   }
 
-  const snippetEntry = {
-    TableName: process.env.DYNAMODB_TABLE,
-    Item: { snippet: hruId.random(), content },
-  };
+  const id = exports.postSnippetContent(content);
 
   const okTime = Math.floor(Date.now() / 1000) + 10;
   const rateLimitEntry = {
@@ -79,11 +104,9 @@ exports.postSnippet = async (event) => {
 
   try {
     await dynamo.put(rateLimitEntry).promise();
-    await dynamo.put(snippetEntry).promise();
-    return createResponse(200, {
-      id: snippetEntry.Item.snippet,
-    });
+    return createResponse(200, { id });
   } catch (error) {
+    console.error({ error });
     return createResponse(500, {
       message: RESPONSE_MESSAGES.DYNAMODB_SAVE_FAILURE,
     });
